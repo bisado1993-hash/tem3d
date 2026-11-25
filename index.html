@@ -40,8 +40,9 @@ button,input{font:inherit;color:inherit}
 .vbtns .btn[aria-pressed=true]{background:var(--go);color:#fff;border-color:var(--go)}
 .vbtns .btn:disabled{opacity:.55}
 .hint{position:absolute;left:10px;bottom:10px;font-size:13px;color:var(--mute);background:color-mix(in srgb,var(--bg) 80%,transparent);padding:4px 8px;border-radius:6px;pointer-events:none}
-.panel{grid-area:panel;background:var(--card);border-top:1px solid var(--line);padding:12px 12px calc(12px + env(safe-area-inset-bottom));display:grid;gap:10px;max-height:46dvh;overflow:auto}
-@media(min-width:900px){.panel{border-top:0;border-left:1px solid var(--line);max-height:none;align-content:start}}
+.panel{grid-area:panel;background:var(--card);border-top:1px solid var(--line);padding:12px 12px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;max-height:46dvh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.panel>*{flex:none}
+@media(min-width:900px){.panel{border-top:0;border-left:1px solid var(--line);max-height:none}}
 .find{display:grid;grid-template-columns:52px minmax(0,1fr) 52px;gap:8px}
 .find .btn{font-size:26px;min-height:58px}
 #tem{min-height:58px;font-size:30px;font-weight:700;text-align:center;border:2px solid var(--line);border-radius:10px;background:var(--bg);width:100%}
@@ -91,6 +92,7 @@ button,input{font:inherit;color:inherit}
       <button class="btn" id="fit" type="button" aria-label="Xem toàn cảnh">Toàn cảnh</button>
       <button class="btn" id="go" type="button" aria-label="Phóng tới tấm đang chọn">Tới tấm</button>
       <button class="btn" id="doors" type="button" aria-pressed="false">Ẩn cánh</button>
+      <button class="btn" id="nest" type="button" aria-pressed="true" hidden>Hiện nesting</button>
     </div>
     <span class="hint">1 ngón: xoay · 2 ngón: phóng, kéo · chạm tấm để xem số</span>
   </div>
@@ -188,7 +190,9 @@ scene.add(new THREE.HemisphereLight(0xffffff,0x8a8070,0.75));
 const sun=new THREE.DirectionalLight(0xffffff,0.55);sun.position.set(1,2,1.5);scene.add(sun);
 const root=new THREE.Group();scene.add(root);
 const WOOD=new THREE.Color(0xd8c09a),GO=new THREE.Color(0x22b55c),GREY=new THREE.Color(0xb9b6b0);
-let parts=[],tems=[],sel='',mode='fade',dirty=true,model=null,hideDoors=false;
+let parts=[],tems=[],sel='',mode='fade',dirty=true,model=null,hideDoors=false,hideNest=true;
+const fold0=s=>String(s??'').replace(/đ/g,'d').replace(/Đ/g,'D').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const isNest=p=>{const n=fold0(`${p.name} ${p.tag||''}`),d=p.dims||[];return /sheet[\s_-]*\d+|nesting|\bnest\b|xep phoi|so do cat/.test(n)||(d.length===3&&d[2]===0&&d[0]>=2000)};
 const isDoor=s=>/(^|[^a-z])(canh|door|cua)([^a-z]|$)/.test(String(s??'').replace(/đ/g,'d').replace(/Đ/g,'D').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase());
 const cam={tgt:new THREE.Vector3(),r:3000,th:-0.6,ph:1.15,goal:null};
 
@@ -205,27 +209,31 @@ function build(m){
     root.add(o);return o};
   if(m.other)mk(m.other,GREY);
   parts=(m.parts||[]).map(p=>{const o=mk(p,WOOD);o.userData.part=p;if(o.userData.mesh)o.userData.mesh.userData.obj=o;return o});
-  tems=[...new Set(parts.map(o=>o.userData.part.tem))].sort(ncmp);
-  parts.forEach(o=>{const p=o.userData.part;o.userData.door=isDoor(`${p.name} ${p.tag||''}`)});
-  const dn=parts.filter(o=>o.userData.door).length;hideDoors=false;
+  parts.forEach(o=>{const p=o.userData.part;o.userData.door=isDoor(`${p.name} ${p.tag||''}`);o.userData.nest=isNest(p)});
+  const nn=parts.filter(o=>o.userData.nest).length;hideNest=true;
+  $('nest').hidden=!nn;$('nest').setAttribute('aria-pressed','true');$('nest').textContent=`Hiện nesting (${nn})`;
+  retems();
+  const dn=parts.filter(o=>o.userData.door&&!o.userData.nest).length;hideDoors=false;
   $('doors').textContent=dn?`Ẩn cánh (${dn})`:'Không thấy cánh';$('doors').disabled=!dn;$('doors').setAttribute('aria-pressed','false');
   const box=new THREE.Box3().setFromObject(root),c=box.getCenter(new THREE.Vector3());
   root.position.sub(c);root.updateMatrixWorld(true);
   $('mname').textContent=m.model||'Mô hình';
-  $('msub').textContent=`${parts.length} tấm có tem · ${tems.length} số tem${m.demo?' · đang xem mẫu':''}`;
-  $('allbl').textContent=`Tất cả số tem (${tems.length})`;
+  $('msub').textContent=`${act().length} tấm có tem · ${tems.length} số tem${m.demo?' · đang xem mẫu':''}`;
   fit(true);setSel('');
 }
+function act(){return parts.filter(o=>!(hideNest&&o.userData.nest))}
+function retems(){tems=[...new Set(act().map(o=>o.userData.part.tem))].sort(ncmp);$('allbl').textContent=`Tất cả số tem (${tems.length})`}
+function hits(){return act().filter(o=>o.userData.part.tem===sel)}
 function bounds(objs){const b=new THREE.Box3();objs.forEach(o=>b.expandByObject(o));return b}
 function frame(b,now){const s=b.getSize(new THREE.Vector3()).length()||1000,c=b.getCenter(new THREE.Vector3());
   const r=s/2/Math.tan(camera.fov*Math.PI/360)*1.1;
   if(now){cam.tgt.copy(c);cam.r=r;cam.goal=null}else cam.goal={t:c,r};dirty=true}
-function fit(now){frame(bounds(parts.length?[root]:[root]),now)}
-function goSel(){const m=parts.filter(o=>o.userData.part.tem===sel);if(m.length)frame(bounds(m),false)}
+function fit(now){const a=act();frame(bounds(a.length?a.concat(root.children.filter(o=>!o.userData.part)):[root]),now)}
+function goSel(){const m=hits();if(m.length)frame(bounds(m),false)}
 
 function paint(){
-  for(const o of parts){const hit=sel&&o.userData.part.tem===sel,{mesh,line}=o.userData;
-    o.visible=!(sel&&!hit&&mode==='hide')&&!(hideDoors&&o.userData.door&&!hit);
+  for(const o of parts){const ns=hideNest&&o.userData.nest,hit=!ns&&sel&&o.userData.part.tem===sel,{mesh,line}=o.userData;
+    o.visible=!ns&&!(sel&&!hit&&mode==='hide')&&!(hideDoors&&o.userData.door&&!hit);
     const op=sel&&!hit&&mode==='fade'?0.16:1;
     if(mesh){mesh.material.color.copy(hit?GO:WOOD);mesh.material.opacity=op;mesh.material.depthWrite=op===1;mesh.renderOrder=hit?2:0;
       mesh.material.emissive&&mesh.material.emissive.set(hit?0x0b4d24:0x000000)}
@@ -237,7 +245,7 @@ function paint(){
 function info(){
   const el=$('info');
   if(!sel){el.innerHTML=`<p class="muted">Gõ số tem để tấm đó sáng xanh, hoặc chạm vào một tấm trên mô hình để xem số của nó.</p>`;return}
-  const m=parts.filter(o=>o.userData.part.tem===sel).map(o=>o.userData.part);
+  const m=hits().map(o=>o.userData.part);
   if(!m.length){el.innerHTML=`<h2>Không có tấm số ${esc(sel)}</h2><p class="muted">Kiểm tra lại số trên tem, hoặc tên component trong SketchUp.</p>`;return}
   el.innerHTML=`<h2><span class="badge">Tem ${esc(sel)}</span>${m.length>1?`${m.length} tấm cùng số`:esc(m[0].name)}</h2>`+
    m.map(p=>`<div class="it">${m.length>1?`<b>${esc(p.name)}</b>`:''}<div class="dim">${(p.dims||[]).map(esc).join(' × ')} mm</div>${p.mat?`<div>${esc(p.mat)}</div>`:''}</div>`).join('');
@@ -294,7 +302,10 @@ $('minus').addEventListener('click',()=>stepT(-1));$('plus').addEventListener('c
 $('chips').addEventListener('click',e=>{const b=e.target.closest('.chip');if(b)setSel(b.dataset.t===sel?'':b.dataset.t,true)});
 $('mode').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;mode=b.dataset.m;
   for(const x of $('mode').children)x.setAttribute('aria-pressed',x===b);paint()});
-$('fit').addEventListener('click',()=>frame(bounds([root]),false));
+$('nest').addEventListener('click',()=>{hideNest=!hideNest;const n=parts.filter(o=>o.userData.nest).length;
+  $('nest').setAttribute('aria-pressed',hideNest);$('nest').textContent=hideNest?`Hiện nesting (${n})`:`Ẩn nesting (${n})`;
+  retems();$('msub').textContent=`${act().length} tấm có tem · ${tems.length} số tem`;setSel(sel);fit(false)});
+$('fit').addEventListener('click',()=>fit(false));
 $('go').addEventListener('click',()=>{if(sel)goSel()});
 $('doors').addEventListener('click',()=>{hideDoors=!hideDoors;$('doors').setAttribute('aria-pressed',hideDoors);const n=parts.filter(o=>o.userData.door).length;$('doors').textContent=hideDoors?`Hiện cánh (${n})`:`Ẩn cánh (${n})`;paint()});
 $('inp').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
