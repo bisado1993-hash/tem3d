@@ -61,13 +61,27 @@ button,input{font:inherit;color:inherit}
 .chip[aria-pressed=true]{background:var(--go);border-color:var(--go);color:var(--goink)}
 .msg{color:#d03a2f;font-size:15px;margin:0}
 .load{position:absolute;inset:0;display:grid;place-items:center;color:var(--mute)}
+.top .btn.ghost{background:transparent;color:#f1f0ec;border-color:#4a4e54}
+.lst{position:fixed;inset:0;z-index:30;background:var(--card);display:grid;grid-template-rows:auto auto minmax(0,1fr)}
+.lst[hidden]{display:none}
+.lhead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#1f2226;color:#f1f0ec}
+.lhead h2{flex:1;margin:0;font-size:22px;line-height:1.1}
+.lhead .btn{background:transparent;color:#f1f0ec;border-color:#4a4e54}
+.lsearch{padding:12px}
+.lsearch input{width:100%;min-height:48px;font-size:17px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:0 14px}
+.litems{overflow:auto;padding:0 12px calc(24px + env(safe-area-inset-bottom))}
+.li{display:grid;gap:2px;width:100%;text-align:left;padding:12px 10px;border:0;border-bottom:1px solid var(--line);background:transparent;cursor:pointer;min-height:60px}
+.li b{font-size:19px;line-height:1.25;overflow-wrap:anywhere}.li span{color:var(--mute);font-size:14px}
+.li[aria-current=true]{background:color-mix(in srgb,var(--go) 16%,transparent)}
+.li:focus-visible{outline:3px solid var(--go);outline-offset:-3px}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="top">
     <h1><span id="mname">Tem 3D</span><small id="msub"></small></h1>
-    <label class="btn">Nạp file<input type="file" id="inp" accept=".json,application/json"></label>
+    <button class="btn" id="openlist" type="button">Danh sách tủ</button>
+    <label class="btn ghost">Nạp file<input type="file" id="inp" accept=".json,application/json"></label>
   </div>
   <div class="view" id="view">
     <p class="load" id="load">Đang tải bộ dựng 3D…</p>
@@ -98,6 +112,11 @@ button,input{font:inherit;color:inherit}
     </div>
     <p class="msg" id="msg" hidden></p>
   </div>
+</div>
+<div class="lst" id="lst" hidden role="dialog" aria-modal="true" aria-label="Danh sách tủ">
+  <div class="lhead"><h2>Danh sách tủ</h2><button class="btn" id="reload" type="button">Tải lại</button><button class="btn" id="closelist" type="button">Đóng</button></div>
+  <div class="lsearch"><input type="search" id="lq" placeholder="Tìm tên tủ…" aria-label="Tìm tên tủ"></div>
+  <div class="litems" id="litems"></div>
 </div>
 <script>
 {
@@ -254,10 +273,40 @@ $('fit').addEventListener('click',()=>frame(bounds([root]),false));
 $('go').addEventListener('click',()=>{if(sel)goSel()});
 $('inp').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
   if(/\.skp$/i.test(f.name)){say('Đây là file SketchUp. Hãy mở trong SketchUp, chọn Extensions › Tem 3D: Xuất cho điện thoại, rồi nạp file .json được tạo ra.');return}
-  try{const txt=await f.text(),m=JSON.parse(txt);if(!Array.isArray(m.parts))throw 0;say('');build(m);DB.set(txt)}
+  try{const txt=await f.text(),m=JSON.parse(txt);if(!Array.isArray(m.parts))throw 0;say('');curId='';build(m);DB.set(txt)}
   catch(err){say('Không đọc được file. Cần file .json xuất từ plugin Tem 3D.')}});
 
-(async()=>{const t=await DB.get();let m=null;try{m=t&&JSON.parse(t)}catch(e){}build(m&&Array.isArray(m.parts)?m:sample())})();
+/* ---------- danh sách tủ gửi từ SketchUp (thư mục models/ trên Render) ---------- */
+let IDX=[],curId='';
+const fold=s=>String(s??'').replace(/đ/g,'d').replace(/Đ/g,'D').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+async function getIndex(){try{const r=await fetch(`models/index.json?t=${Date.now()}`,{cache:'no-store'});if(!r.ok)return [];const j=await r.json();return Array.isArray(j)?j:[]}catch(e){return []}}
+async function loadRemote(id,quiet){
+  try{const r=await fetch(`models/${encodeURIComponent(id)}.json?t=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw 0;
+    const txt=await r.text(),m=JSON.parse(txt);if(!Array.isArray(m.parts))throw 0;
+    say('');curId=id;build(m);DB.set(txt);return true}
+  catch(e){if(!quiet)say('Chưa mở được tủ này. Nếu vừa gửi từ SketchUp, chờ khoảng 1 phút rồi thử lại.');return false}}
+function drawList(){
+  const q=fold($('lq').value).trim(),items=IDX.filter(m=>!q||fold(m.name).includes(q));
+  $('litems').innerHTML=!IDX.length?`<p class="muted">Chưa có tủ nào. Trong SketchUp bấm Extensions › Tem 3D: Gửi lên app, khoảng 1 phút sau tủ sẽ hiện ở đây.</p>`:
+    !items.length?`<p class="muted">Không có tủ nào khớp “${esc($('lq').value)}”.</p>`:
+    items.map(m=>`<button type="button" class="li" data-id="${esc(m.id)}" aria-current="${m.id===curId}"><b>${esc(m.name||m.id)}</b><span>${esc(m.date||'')}${m.parts?` · ${esc(m.parts)} tấm`:''}</span></button>`).join('')}
+async function openList(){$('lst').hidden=false;$('litems').innerHTML='<p class="muted">Đang tải danh sách…</p>';IDX=await getIndex();drawList()}
+$('openlist').addEventListener('click',openList);
+$('reload').addEventListener('click',openList);
+$('closelist').addEventListener('click',()=>{$('lst').hidden=true});
+$('lq').addEventListener('input',drawList);
+$('litems').addEventListener('click',async e=>{const b=e.target.closest('.li');if(!b)return;const id=b.dataset.id;$('lst').hidden=true;
+  if(location.hash.slice(1)===id)loadRemote(id);else location.hash=id});
+addEventListener('hashchange',()=>{const id=decodeURIComponent(location.hash.slice(1));if(id&&id!==curId)loadRemote(id)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('lst').hidden=true});
+
+(async()=>{
+  const h=decodeURIComponent(location.hash.slice(1));
+  if(h&&await loadRemote(h))return;
+  const t=await DB.get();let m=null;try{m=t&&JSON.parse(t)}catch(e){}
+  if(m&&Array.isArray(m.parts)){build(m);return}
+  build(sample());IDX=await getIndex();if(IDX.length)openList();
+})();
 }
 }
 </script>
