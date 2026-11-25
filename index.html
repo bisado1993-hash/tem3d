@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Tem 3D</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tem 3D">
+<meta name="theme-color" content="#1f2226">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+/* VOICE: công cụ xưởng, bấm nhanh bằng ngón cái
+   IDEA: mô hình tủ trên bàn kiểm hàng, tấm cần tìm được dán băng xanh
+   PICTURE: mô hình 3D chiếm gần hết màn hình, tấm được chọn xanh lá, tấm khác mờ đi
+   COLOUR and TYPE: nền xám đá, gỗ màu ván mộc, xanh lá cho tấm đang tìm; IBM Plex Sans Condensed
+   LAYOUT: thanh tiêu đề mỏng, khung 3D, bảng dưới có ô số tem lớn; màn rộng thì bảng nằm bên phải */
+:root{color-scheme:light dark;--bg:light-dark(#dcdcd8,#141618);--ink:light-dark(#16181a,#ecebe7);--mute:light-dark(#5b6066,#9ea3a8);
+--card:light-dark(#fff,#1e2124);--line:light-dark(#c9c8c3,#34383c);--go:#1fa855;--goink:#fff}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 "IBM Plex Sans Condensed",system-ui,sans-serif;overflow:hidden;font-variant-numeric:tabular-nums}
+button,input{font:inherit;color:inherit}
+.app{height:100dvh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;grid-template-areas:"top" "view" "panel"}
+@media(min-width:900px){.app{grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:auto minmax(0,1fr);grid-template-areas:"top top" "view panel"}}
+.top{grid-area:top;display:flex;align-items:center;gap:10px;padding:8px 12px;background:#1f2226;color:#f1f0ec}
+.top h1{font-size:20px;margin:0;line-height:1.1;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top h1 small{display:block;font-size:13px;font-weight:400;color:#b4b8bd;overflow:hidden;text-overflow:ellipsis}
+.btn{min-height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-weight:600;white-space:nowrap}
+.top .btn{background:#ffcc33;border-color:#ffcc33;color:#1a1500}
+.btn input{display:none}
+.btn:focus-visible,input:focus-visible,.chip:focus-visible{outline:3px solid var(--go);outline-offset:2px}
+.view{grid-area:view;position:relative;touch-action:none}
+.view canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.vbtns{position:absolute;right:10px;top:10px;display:grid;gap:8px}
+.vbtns .btn{min-width:44px;padding:0 10px;font-size:14px;box-shadow:0 1px 3px rgb(0 0 0/.15)}
+.hint{position:absolute;left:10px;bottom:10px;font-size:13px;color:var(--mute);background:color-mix(in srgb,var(--bg) 80%,transparent);padding:4px 8px;border-radius:6px;pointer-events:none}
+.panel{grid-area:panel;background:var(--card);border-top:1px solid var(--line);padding:12px 12px calc(12px + env(safe-area-inset-bottom));display:grid;gap:10px;max-height:46dvh;overflow:auto}
+@media(min-width:900px){.panel{border-top:0;border-left:1px solid var(--line);max-height:none;align-content:start}}
+.find{display:grid;grid-template-columns:52px minmax(0,1fr) 52px;gap:8px}
+.find .btn{font-size:26px;min-height:58px}
+#tem{min-height:58px;font-size:30px;font-weight:700;text-align:center;border:2px solid var(--line);border-radius:10px;background:var(--bg);width:100%}
+#tem.ok{border-color:var(--go)}
+.info{min-height:64px}
+.info h2{margin:0;font-size:22px;line-height:1.2;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.badge{background:var(--go);color:var(--goink);border-radius:6px;padding:0 8px;font-size:18px}
+.it{border-top:1px solid var(--line);padding:6px 0}
+.it b{font-size:17px}.it div{color:var(--mute);font-size:15px}
+.dim{color:var(--ink)!important;font-size:20px!important;font-weight:600}
+.muted{color:var(--mute);margin:0}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{flex:1;min-height:40px;border:0;background:transparent;cursor:pointer;font-size:15px}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg);font-weight:600}
+.lbl{font-size:13px;color:var(--mute);margin:0 0 4px}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+@media(min-width:900px){.chips{flex-wrap:wrap}}
+.chip{flex:none;min-width:44px;min-height:40px;border-radius:8px;border:1px solid var(--line);background:var(--bg);cursor:pointer;font-weight:600}
+.chip[aria-pressed=true]{background:var(--go);border-color:var(--go);color:var(--goink)}
+.msg{color:#d03a2f;font-size:15px;margin:0}
+.load{position:absolute;inset:0;display:grid;place-items:center;color:var(--mute)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <h1><span id="mname">Tem 3D</span><small id="msub"></small></h1>
+    <label class="btn">Nạp file<input type="file" id="inp" accept=".json,application/json"></label>
+  </div>
+  <div class="view" id="view">
+    <p class="load" id="load">Đang tải bộ dựng 3D…</p>
+    <div class="vbtns">
+      <button class="btn" id="fit" type="button" aria-label="Xem toàn cảnh">Toàn cảnh</button>
+      <button class="btn" id="go" type="button" aria-label="Phóng tới tấm đang chọn">Tới tấm</button>
+    </div>
+    <span class="hint">1 ngón: xoay · 2 ngón: phóng, kéo · chạm tấm để xem số</span>
+  </div>
+  <div class="panel">
+    <div class="find">
+      <button class="btn" id="minus" type="button" aria-label="Số tem trước">−</button>
+      <input id="tem" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Số tem" aria-label="Gõ số tem">
+      <button class="btn" id="plus" type="button" aria-label="Số tem sau">+</button>
+    </div>
+    <div class="info" id="info"></div>
+    <div>
+      <p class="lbl">Các tấm khác khi đang tìm</p>
+      <div class="seg" id="mode">
+        <button type="button" data-m="fade" aria-pressed="true">Làm mờ</button>
+        <button type="button" data-m="hide" aria-pressed="false">Ẩn đi</button>
+        <button type="button" data-m="keep" aria-pressed="false">Giữ nguyên</button>
+      </div>
+    </div>
+    <div>
+      <p class="lbl" id="allbl">Tất cả số tem</p>
+      <div class="chips" id="chips"></div>
+    </div>
+    <p class="msg" id="msg" hidden></p>
+  </div>
+</div>
+<script>
+{
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const say=t=>{$('msg').textContent=t;$('msg').hidden=!t};
+const ncmp=(a,b)=>(parseInt(a)||0)-(parseInt(b)||0)||String(a).localeCompare(String(b));
+
+/* ---------- mẫu: tủ 3 khoang, số tem trong tên ---------- */
+function box(x0,y0,z0,dx,dy,dz){
+  const P=[[x0,y0,z0],[x0+dx,y0,z0],[x0+dx,y0+dy,z0],[x0,y0+dy,z0],[x0,y0,z0+dz],[x0+dx,y0,z0+dz],[x0+dx,y0+dy,z0+dz],[x0,y0+dy,z0+dz]];
+  const Fc=[[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]],pos=[],idx=[],edges=[];
+  Fc.forEach(f=>{const b=pos.length/3;f.forEach(i=>pos.push(...P[i]));idx.push(b,b+1,b+2,b,b+2,b+3)});
+  [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]].forEach(([a,c])=>edges.push(...P[a],...P[c]));
+  return {pos,idx,edges};
+}
+function sample(){
+  const T=17,W=1500,D=580,H=2100,parts=[];
+  const add=(tem,name,g,dims)=>parts.push({tem:String(tem),name,dims,mat:'MFC trắng sần',...g});
+  add(1,'Hông trái',box(0,0,0,T,D,H),[H,D,T]);
+  add(2,'Hông phải',box(W-T,0,0,T,D,H),[H,D,T]);
+  add(3,'Vách giữa 1',box(500,0,T,T,D-20,H-2*T),[H-2*T,D-20,T]);
+  add(4,'Vách giữa 2',box(1000,0,T,T,D-20,H-2*T),[H-2*T,D-20,T]);
+  add(5,'Nóc',box(T,0,H-T,W-2*T,D,T),[W-2*T,D,T]);
+  add(6,'Đáy',box(T,0,0,W-2*T,D,T),[W-2*T,D,T]);
+  add(7,'Hậu',box(T,D-8,T,W-2*T,8,H-2*T),[H-2*T,W-2*T,8]);
+  let n=8;
+  [1700,950].forEach(z=>{add(n++,'Đợt khoang trái',box(T,0,z,500-T,D-30,T),[500-T,D-30,T])});
+  [1700,1350,1000,650].forEach(z=>{add(n++,'Đợt khoang giữa',box(500+T,0,z,500-T,D-30,T),[500-T,D-30,T])});
+  [1500,1150,800,450].forEach(z=>{add(n++,'Đợt khoang phải',box(1000+T,0,z,W-1000-2*T,D-30,T),[W-1000-2*T,D-30,T])});
+  add(n++,'Thanh treo đồ',box(T,250,1600,500-T,25,25),[500-T,25,25]);
+  return {v:1,model:'Tủ mẫu (dữ liệu giả định)',unit:'mm',parts,other:{pos:[],idx:[],edges:[]},demo:true};
+}
+
+/* ---------- lưu mô hình gần nhất trong trình duyệt ---------- */
+const DB={open(){return new Promise((ok,no)=>{try{const r=indexedDB.open('tem3d',1);r.onupgradeneeded=()=>r.result.createObjectStore('m');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)}catch(e){no(e)}})},
+  async set(v){try{const d=await this.open();d.transaction('m','readwrite').objectStore('m').put(v,'last')}catch(e){}},
+  async get(){try{const d=await this.open();return await new Promise(ok=>{const q=d.transaction('m').objectStore('m').get('last');q.onsuccess=()=>ok(q.result);q.onerror=()=>ok(null)})}catch(e){return null}}};
+
+if(!window.THREE){$('load').textContent='Không tải được bộ dựng 3D. Kiểm tra mạng rồi mở lại trang.';}
+else{
+const view=$('view');
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+view.prepend(renderer.domElement);$('load').remove();
+const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(40,1,10,200000);
+scene.add(new THREE.HemisphereLight(0xffffff,0x8a8070,0.75));
+const sun=new THREE.DirectionalLight(0xffffff,0.55);sun.position.set(1,2,1.5);scene.add(sun);
+const root=new THREE.Group();scene.add(root);
+const WOOD=new THREE.Color(0xd8c09a),GO=new THREE.Color(0x22b55c),GREY=new THREE.Color(0xb9b6b0);
+let parts=[],tems=[],sel='',mode='fade',dirty=true,model=null;
+const cam={tgt:new THREE.Vector3(),r:3000,th:-0.6,ph:1.15,goal:null};
+
+function clear(){while(root.children.length){const o=root.children.pop();o.traverse(c=>{c.geometry&&c.geometry.dispose();c.material&&c.material.dispose()})}parts=[]}
+function geo(pos,idx){const g=new THREE.BufferGeometry(),a=new Float32Array(pos.length);
+  for(let i=0;i<pos.length;i+=3){a[i]=pos[i];a[i+1]=pos[i+2];a[i+2]=-pos[i+1]}
+  g.setAttribute('position',new THREE.BufferAttribute(a,3));if(idx)g.setIndex(idx);return g}
+function build(m){
+  clear();model=m;
+  const mk=(d,col)=>{const o=new THREE.Group();
+    if(d.idx&&d.idx.length){const g=geo(d.pos,d.idx);g.computeVertexNormals();
+      const mesh=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:col,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1,transparent:true}));o.add(mesh);o.userData.mesh=mesh}
+    if(d.edges&&d.edges.length){const l=new THREE.LineSegments(geo(d.edges),new THREE.LineBasicMaterial({color:0x2f2a24,transparent:true}));o.add(l);o.userData.line=l}
+    root.add(o);return o};
+  if(m.other)mk(m.other,GREY);
+  parts=(m.parts||[]).map(p=>{const o=mk(p,WOOD);o.userData.part=p;if(o.userData.mesh)o.userData.mesh.userData.obj=o;return o});
+  tems=[...new Set(parts.map(o=>o.userData.part.tem))].sort(ncmp);
+  const box=new THREE.Box3().setFromObject(root),c=box.getCenter(new THREE.Vector3());
+  root.position.sub(c);root.updateMatrixWorld(true);
+  $('mname').textContent=m.model||'Mô hình';
+  $('msub').textContent=`${parts.length} tấm có tem · ${tems.length} số tem${m.demo?' · đang xem mẫu':''}`;
+  $('allbl').textContent=`Tất cả số tem (${tems.length})`;
+  fit(true);setSel('');
+}
+function bounds(objs){const b=new THREE.Box3();objs.forEach(o=>b.expandByObject(o));return b}
+function frame(b,now){const s=b.getSize(new THREE.Vector3()).length()||1000,c=b.getCenter(new THREE.Vector3());
+  const r=s/2/Math.tan(camera.fov*Math.PI/360)*1.1;
+  if(now){cam.tgt.copy(c);cam.r=r;cam.goal=null}else cam.goal={t:c,r};dirty=true}
+function fit(now){frame(bounds(parts.length?[root]:[root]),now)}
+function goSel(){const m=parts.filter(o=>o.userData.part.tem===sel);if(m.length)frame(bounds(m),false)}
+
+function paint(){
+  for(const o of parts){const hit=sel&&o.userData.part.tem===sel,{mesh,line}=o.userData;
+    o.visible=!(sel&&!hit&&mode==='hide');
+    const op=sel&&!hit&&mode==='fade'?0.16:1;
+    if(mesh){mesh.material.color.copy(hit?GO:WOOD);mesh.material.opacity=op;mesh.material.depthWrite=op===1;mesh.renderOrder=hit?2:0;
+      mesh.material.emissive&&mesh.material.emissive.set(hit?0x0b4d24:0x000000)}
+    if(line){line.material.opacity=op===1?1:0.15;line.material.color.set(hit?0x0b3d1e:0x2f2a24)}}
+  for(const o of root.children)if(!o.userData.part){const op=sel&&mode!=='keep'?0.16:1;o.visible=!(sel&&mode==='hide');
+    if(o.userData.mesh){o.userData.mesh.material.opacity=op;o.userData.mesh.material.depthWrite=op===1}if(o.userData.line)o.userData.line.material.opacity=op}
+  dirty=true;
+}
+function info(){
+  const el=$('info');
+  if(!sel){el.innerHTML=`<p class="muted">Gõ số tem để tấm đó sáng xanh, hoặc chạm vào một tấm trên mô hình để xem số của nó.</p>`;return}
+  const m=parts.filter(o=>o.userData.part.tem===sel).map(o=>o.userData.part);
+  if(!m.length){el.innerHTML=`<h2>Không có tấm số ${esc(sel)}</h2><p class="muted">Kiểm tra lại số trên tem, hoặc tên component trong SketchUp.</p>`;return}
+  el.innerHTML=`<h2><span class="badge">Tem ${esc(sel)}</span>${m.length>1?`${m.length} tấm cùng số`:esc(m[0].name)}</h2>`+
+   m.map(p=>`<div class="it">${m.length>1?`<b>${esc(p.name)}</b>`:''}<div class="dim">${(p.dims||[]).map(esc).join(' × ')} mm</div>${p.mat?`<div>${esc(p.mat)}</div>`:''}</div>`).join('');
+}
+function chips(){$('chips').innerHTML=tems.map(t=>`<button type="button" class="chip" data-t="${esc(t)}" aria-pressed="${t===sel}">${esc(t)}</button>`).join('')}
+function setSel(t,zoom){
+  sel=String(t||'').trim();$('tem').value!==sel&&($('tem').value=sel);
+  $('tem').classList.toggle('ok',!!sel&&tems.includes(sel));
+  paint();info();chips();
+  const c=document.querySelector(`.chip[aria-pressed="true"]`);c&&c.scrollIntoView({block:'nearest',inline:'center'});
+  if(zoom&&tems.includes(sel))goSel();
+}
+
+/* ---------- điều khiển xoay / phóng / kéo ---------- */
+const pts=new Map();let tap=null,pinch=null;
+const el=renderer.domElement;
+function pan(dx,dy){const h=view.clientHeight||1,k=2*cam.r*Math.tan(camera.fov*Math.PI/360)/h;
+  const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0),up=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
+  cam.tgt.addScaledVector(right,-dx*k).addScaledVector(up,dy*k);cam.goal=null;dirty=true}
+el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY,b:e.button,sh:e.shiftKey});
+  tap=pts.size===1?{x:e.clientX,y:e.clientY,t:performance.now()}:null;pinch=null});
+el.addEventListener('pointermove',e=>{const p=pts.get(e.pointerId);if(!p)return;const dx=e.clientX-p.x,dy=e.clientY-p.y;
+  if(pts.size===1){if(p.b===2||p.sh)pan(dx,dy);else{cam.th-=dx*0.008;cam.ph=Math.min(3.05,Math.max(0.08,cam.ph-dy*0.008));cam.goal=null;dirty=true}}
+  p.x=e.clientX;p.y=e.clientY;
+  if(pts.size===2){const [a,b]=[...pts.values()],d=Math.hypot(a.x-b.x,a.y-b.y),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    if(pinch){cam.r=Math.max(50,cam.r*pinch.d/d);pan(mx-pinch.mx,my-pinch.my)}pinch={d,mx,my}}
+  if(tap&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>8)tap=null});
+const up=e=>{if(tap&&pts.size===1&&performance.now()-tap.t<400)pick(e);pts.delete(e.pointerId);pinch=null;tap=null};
+el.addEventListener('pointerup',up);el.addEventListener('pointercancel',e=>{pts.delete(e.pointerId);pinch=null;tap=null});
+el.addEventListener('contextmenu',e=>e.preventDefault());
+el.addEventListener('wheel',e=>{e.preventDefault();cam.r=Math.max(50,cam.r*Math.exp(e.deltaY*0.0012));cam.goal=null;dirty=true},{passive:false});
+const ray=new THREE.Raycaster();
+function pick(e){const r=el.getBoundingClientRect();
+  ray.setFromCamera({x:(e.clientX-r.left)/r.width*2-1,y:-(e.clientY-r.top)/r.height*2+1},camera);
+  const ms=parts.filter(o=>o.visible&&o.userData.mesh).map(o=>o.userData.mesh);
+  const hits=ray.intersectObjects(ms,false);if(!hits.length)return;
+  const h=hits.find(x=>x.object.material.opacity>0.5)||hits[0];
+  setSel(h.object.userData.obj.userData.part.tem)}
+
+function resize(){const w=view.clientWidth,h=view.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();dirty=true}
+const ro=new ResizeObserver(resize);ro.observe(view);
+function loop(){
+  if(cam.goal){cam.tgt.lerp(cam.goal.t,0.18);cam.r+=(cam.goal.r-cam.r)*0.18;if(cam.tgt.distanceTo(cam.goal.t)<1&&Math.abs(cam.r-cam.goal.r)<1)cam.goal=null;dirty=true}
+  if(dirty){const s=Math.sin(cam.ph);camera.position.set(cam.tgt.x+cam.r*s*Math.sin(cam.th),cam.tgt.y+cam.r*Math.cos(cam.ph),cam.tgt.z+cam.r*s*Math.cos(cam.th));
+    camera.near=Math.max(1,cam.r/200);camera.far=cam.r*50;camera.updateProjectionMatrix();camera.lookAt(cam.tgt);renderer.render(scene,camera);dirty=false}
+  requestAnimationFrame(loop)}
+loop();
+
+/* ---------- sự kiện ---------- */
+$('tem').addEventListener('input',e=>{const v=e.target.value.replace(/\D/g,'');e.target.value=v;setSel(v)});
+$('tem').addEventListener('keydown',e=>{if(e.key==='Enter'){e.target.blur();goSel()}});
+const stepT=d=>{if(!tems.length)return;let i=tems.indexOf(sel);i=i<0?(d>0?0:tems.length-1):Math.min(tems.length-1,Math.max(0,i+d));setSel(tems[i],true)};
+$('minus').addEventListener('click',()=>stepT(-1));$('plus').addEventListener('click',()=>stepT(1));
+$('chips').addEventListener('click',e=>{const b=e.target.closest('.chip');if(b)setSel(b.dataset.t===sel?'':b.dataset.t,true)});
+$('mode').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;mode=b.dataset.m;
+  for(const x of $('mode').children)x.setAttribute('aria-pressed',x===b);paint()});
+$('fit').addEventListener('click',()=>frame(bounds([root]),false));
+$('go').addEventListener('click',()=>{if(sel)goSel()});
+$('inp').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+  if(/\.skp$/i.test(f.name)){say('Đây là file SketchUp. Hãy mở trong SketchUp, chọn Extensions › Tem 3D: Xuất cho điện thoại, rồi nạp file .json được tạo ra.');return}
+  try{const txt=await f.text(),m=JSON.parse(txt);if(!Array.isArray(m.parts))throw 0;say('');build(m);DB.set(txt)}
+  catch(err){say('Không đọc được file. Cần file .json xuất từ plugin Tem 3D.')}});
+
+(async()=>{const t=await DB.get();let m=null;try{m=t&&JSON.parse(t)}catch(e){}build(m&&Array.isArray(m.parts)?m:sample())})();
+}
+}
+</script>
+</body>
+</html>
