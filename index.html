@@ -315,7 +315,7 @@ function drawList(){
   const q=fold($('lq').value).trim(),items=IDX.filter(m=>!q||fold(m.name).includes(q));
   $('litems').innerHTML=!IDX.length?`<p class="muted">Chưa có tủ nào. Trong SketchUp bấm Extensions › Tem 3D: Gửi lên app, khoảng 1 phút sau tủ sẽ hiện ở đây.</p>`:
     !items.length?`<p class="muted">Không có tủ nào khớp “${esc($('lq').value)}”.</p>`:
-    items.map(m=>`<button type="button" class="li" data-id="${esc(m.id)}" aria-current="${m.id===curId}"><b>${esc(m.name||m.id)}</b><span>${esc(m.date||'')}${m.parts?` · ${esc(m.parts)} tấm`:''}</span></button>`).join('')}
+    items.map(m=>`<button type="button" class="li" data-id="${esc(m.id)}" aria-current="${m.id===curId}"><b>${esc(m.name||m.id)}</b><span>${esc(m.date||'')}${m.parts?` · ${esc(m.parts)} tấm`:''}${m.from?` · gửi từ ${esc(m.from)}`:''}</span></button>`).join('')}
 async function openList(){$('lst').hidden=false;$('litems').innerHTML='<p class="muted">Đang tải danh sách…</p>';IDX=await getIndex();drawList()}
 $('openlist').addEventListener('click',openList);
 $('reload').addEventListener('click',openList);
