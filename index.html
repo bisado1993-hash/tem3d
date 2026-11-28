@@ -41,6 +41,11 @@ button,input{font:inherit;color:inherit}
 .vbtns .btn[hidden]{display:none}
 .vbtns .btn[aria-pressed=true]{background:var(--go);color:#fff;border-color:var(--go)}
 .vbtns .btn:disabled{opacity:.55}
+.mlabel{position:absolute;transform:translate(-50%,-130%);background:#e11d48;color:#fff;font-weight:700;font-size:15px;padding:3px 9px;border-radius:8px;white-space:nowrap;pointer-events:none;box-shadow:0 2px 6px rgb(0 0 0/.25)}
+.mlabel[hidden],.mbar[hidden]{display:none}
+.mbar{position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px;box-shadow:0 2px 8px rgb(0 0 0/.18)}
+.mbar p{margin:0;flex:1;font-size:15px;line-height:1.3}.mbar b{font-size:20px;color:#e11d48}.mbar small{display:block;color:var(--mute);font-size:13px}
+.mbar .btn{min-height:36px;font-size:14px;padding:0 12px}
 .hint{position:absolute;left:10px;bottom:10px;font-size:13px;color:var(--mute);background:color-mix(in srgb,var(--bg) 80%,transparent);padding:4px 8px;border-radius:6px;pointer-events:none}
 .panel{grid-area:panel;background:var(--card);border-top:1px solid var(--line);padding:12px 12px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;max-height:46dvh;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .panel>*{flex:none}
@@ -91,12 +96,15 @@ button,input{font:inherit;color:inherit}
   <div class="view" id="view">
     <p class="load" id="load">Đang tải bộ dựng 3D…</p>
     <div class="vbtns">
+      <button class="btn" id="measure" type="button" aria-pressed="false">Đo</button>
       <button class="btn" id="fit" type="button" aria-label="Xem toàn cảnh">Toàn cảnh</button>
       <button class="btn" id="go" type="button" aria-label="Phóng tới tấm đang chọn">Tới tấm</button>
       <button class="btn" id="doors" type="button" aria-pressed="false">Ẩn cánh</button>
       <button class="btn" id="nest" type="button" aria-pressed="true" hidden>Hiện nesting</button>
     </div>
-    <span class="hint">1 ngón: xoay · 2 ngón: phóng, kéo · chạm tấm để xem số</span>
+    <span class="hint" id="hint">1 ngón: xoay · 2 ngón: phóng, kéo · chạm tấm để xem số</span>
+    <div class="mlabel" id="mlabel" hidden></div>
+    <div class="mbar" id="mbar" hidden><p id="mtxt"></p><button class="btn" id="mclear" type="button">Đo lại</button><button class="btn" id="mdone" type="button">Xong</button></div>
   </div>
   <div class="panel">
     <div class="find">
@@ -221,7 +229,7 @@ function build(m){
   root.position.sub(c);root.updateMatrixWorld(true);
   $('mname').textContent=m.model||'Mô hình';
   $('msub').textContent=`${act().length} tấm có tem · ${tems.length} số tem${m.demo?' · đang xem mẫu':''}`;
-  fit(true);setSel('');
+  fit(true);setSel('');if(typeof setMeasure==='function'&&measuring)setMeasure(false);
 }
 function act(){return parts.filter(o=>!(hideNest&&o.userData.nest))}
 function retems(){tems=[...new Set(act().map(o=>o.userData.part.tem))].sort(ncmp);$('allbl').textContent=`Tất cả số tem (${tems.length})`}
@@ -280,7 +288,44 @@ el.addEventListener('pointerup',up);el.addEventListener('pointercancel',e=>{pts.
 el.addEventListener('contextmenu',e=>e.preventDefault());
 el.addEventListener('wheel',e=>{e.preventDefault();cam.r=Math.max(50,cam.r*Math.exp(e.deltaY*0.0012));cam.goal=null;dirty=true},{passive:false});
 const ray=new THREE.Raycaster();
-function pick(e){const r=el.getBoundingClientRect();
+/* ---------- công cụ đo ---------- */
+let measuring=false,mpts=[];
+const mgroup=new THREE.Group();scene.add(mgroup);
+const mMat=new THREE.MeshBasicMaterial({color:0xe11d48,depthTest:false});
+const lMat=new THREE.LineBasicMaterial({color:0xe11d48,depthTest:false});
+const sphere=new THREE.SphereGeometry(1,16,12);
+const fmm=v=>v<10?(Math.round(v*10)/10).toString().replace('.',','):Math.round(v).toString();
+function mDraw(){
+  while(mgroup.children.length){const o=mgroup.children.pop();if(o.geometry&&o.geometry!==sphere)o.geometry.dispose()}
+  mpts.forEach(p=>{const m=new THREE.Mesh(sphere,mMat);m.position.copy(p);m.renderOrder=999;mgroup.add(m)});
+  if(mpts.length===2){const g=new THREE.BufferGeometry().setFromPoints(mpts);const l=new THREE.Line(g,lMat);l.renderOrder=999;mgroup.add(l)}
+  const t=$('mtxt');
+  if(mpts.length===0)t.innerHTML='Chạm <b>điểm thứ nhất</b><small>Chạm gần góc tấm, app tự bắt vào góc</small>';
+  else if(mpts.length===1)t.innerHTML='Chạm <b>điểm thứ hai</b>';
+  else{const d=mpts[1].clone().sub(mpts[0]);
+    t.innerHTML=`<b>${fmm(d.length())} mm</b><small>ngang ${fmm(Math.abs(d.x))} · sâu ${fmm(Math.abs(d.z))} · cao ${fmm(Math.abs(d.y))}</small>`;
+    $('mlabel').textContent=`${fmm(d.length())} mm`}
+  $('mlabel').hidden=mpts.length!==2;dirty=true;
+}
+function mPlace(){
+  const k=cam.r/260;mgroup.children.forEach(o=>{if(o.isMesh)o.scale.setScalar(k)});
+  if(mpts.length===2){const v=mpts[0].clone().add(mpts[1]).multiplyScalar(0.5).project(camera),L=$('mlabel');
+    L.style.left=`${(v.x+1)/2*view.clientWidth}px`;L.style.top=`${(1-v.y)/2*view.clientHeight}px`;L.hidden=v.z>1}}
+function setMeasure(on){measuring=on;mpts=[];$('measure').setAttribute('aria-pressed',on);$('mbar').hidden=!on;$('hint').hidden=on;mDraw();if(!on)$('mlabel').hidden=true}
+function mPick(e){const r=el.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+  ray.setFromCamera({x:sx/r.width*2-1,y:-sy/r.height*2+1},camera);
+  const ms=[];root.children.forEach(o=>{if(o.visible&&o.userData.mesh)ms.push(o.userData.mesh)});
+  const hits=ray.intersectObjects(ms,false);if(!hits.length)return;
+  const h=hits.find(x=>x.object.material.opacity>0.5)||hits[0];let p=h.point.clone();
+  if(h.face){const pos=h.object.geometry.attributes.position;let best=22;
+    [h.face.a,h.face.b,h.face.c].forEach(i=>{const w=new THREE.Vector3().fromBufferAttribute(pos,i).applyMatrix4(h.object.matrixWorld),v=w.clone().project(camera);
+      const dd=Math.hypot((v.x+1)/2*r.width-sx,(1-v.y)/2*r.height-sy);if(dd<best){best=dd;p=w}})}
+  if(mpts.length>=2)mpts=[];mpts.push(p);mDraw()}
+$('measure').addEventListener('click',()=>setMeasure(!measuring));
+$('mclear').addEventListener('click',()=>{mpts=[];mDraw()});
+$('mdone').addEventListener('click',()=>setMeasure(false));
+
+function pick(e){if(measuring){mPick(e);return}const r=el.getBoundingClientRect();
   ray.setFromCamera({x:(e.clientX-r.left)/r.width*2-1,y:-(e.clientY-r.top)/r.height*2+1},camera);
   const ms=parts.filter(o=>o.visible&&o.userData.mesh).map(o=>o.userData.mesh);
   const hits=ray.intersectObjects(ms,false);if(!hits.length)return;
@@ -292,7 +337,7 @@ const ro=new ResizeObserver(resize);ro.observe(view);
 function loop(){
   if(cam.goal){cam.tgt.lerp(cam.goal.t,0.18);cam.r+=(cam.goal.r-cam.r)*0.18;if(cam.tgt.distanceTo(cam.goal.t)<1&&Math.abs(cam.r-cam.goal.r)<1)cam.goal=null;dirty=true}
   if(dirty){const s=Math.sin(cam.ph);camera.position.set(cam.tgt.x+cam.r*s*Math.sin(cam.th),cam.tgt.y+cam.r*Math.cos(cam.ph),cam.tgt.z+cam.r*s*Math.cos(cam.th));
-    camera.near=Math.max(1,cam.r/200);camera.far=cam.r*50;camera.updateProjectionMatrix();camera.lookAt(cam.tgt);renderer.render(scene,camera);dirty=false}
+    camera.near=Math.max(1,cam.r/200);camera.far=cam.r*50;camera.updateProjectionMatrix();camera.lookAt(cam.tgt);camera.updateMatrixWorld();if(measuring)mPlace();renderer.render(scene,camera);dirty=false}
   requestAnimationFrame(loop)}
 loop();
 
