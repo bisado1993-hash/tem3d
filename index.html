@@ -308,7 +308,7 @@ function mDraw(){
   $('mlabel').hidden=mpts.length!==2;dirty=true;
 }
 function mPlace(){
-  const k=cam.r/260;mgroup.children.forEach(o=>{if(o.isMesh)o.scale.setScalar(k)});
+  const k=cam.r/110;mgroup.children.forEach(o=>{if(o.isMesh)o.scale.setScalar(k)});
   if(mpts.length===2){const v=mpts[0].clone().add(mpts[1]).multiplyScalar(0.5).project(camera),L=$('mlabel');
     L.style.left=`${(v.x+1)/2*view.clientWidth}px`;L.style.top=`${(1-v.y)/2*view.clientHeight}px`;L.hidden=v.z>1}}
 function setMeasure(on){measuring=on;mpts=[];$('measure').setAttribute('aria-pressed',on);$('mbar').hidden=!on;$('hint').hidden=on;mDraw();if(!on)$('mlabel').hidden=true}
